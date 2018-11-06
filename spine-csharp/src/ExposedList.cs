@@ -17,10 +17,10 @@
 // distribute, sublicense, and/or sell copies of the Software, and to
 // permit persons to whom the Software is furnished to do so, subject to
 // the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be
 // included in all copies or substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
 // EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
 // MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -36,7 +36,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 
 namespace Spine {
-	[Serializable]
 	[DebuggerDisplay("Count={Count}")]
 	public class ExposedList<T> : IEnumerable<T> {
 		public T[] Items;
@@ -90,19 +89,39 @@ namespace Spine {
 		}
 
 		public ExposedList<T> Resize (int newSize) {
-			if (newSize > Items.Length) Array.Resize(ref Items, newSize);
+			int itemsLength = Items.Length;
+			var oldItems = Items;
+			if (newSize > itemsLength) {
+				Array.Resize(ref Items, newSize);
+//				var newItems = new T[newSize];
+//				Array.Copy(oldItems, newItems, Count);
+//				Items = newItems;
+			} else if (newSize < itemsLength) {
+				// Allow nulling of T reference type to allow GC.
+				for (int i = newSize; i < itemsLength; i++)
+					oldItems[i] = default(T);
+			}
 			Count = newSize;
 			return this;
 		}
 
-		private void CheckRange (int idx, int count) {
-			if (idx < 0)
+		public void EnsureCapacity (int min) {
+			if (Items.Length < min) {
+				int newCapacity = Items.Length == 0 ? DefaultCapacity : Items.Length * 2;
+				//if ((uint)newCapacity > Array.MaxArrayLength) newCapacity = Array.MaxArrayLength;
+				if (newCapacity < min) newCapacity = min;
+				Capacity = newCapacity;
+			}
+		}
+
+		private void CheckRange (int index, int count) {
+			if (index < 0)
 				throw new ArgumentOutOfRangeException("index");
 
 			if (count < 0)
 				throw new ArgumentOutOfRangeException("count");
 
-			if ((uint)idx + (uint)count > (uint)Count)
+			if ((uint)index + (uint)count > (uint)Count)
 				throw new ArgumentException("index and count exceed length of list");
 		}
 
@@ -181,6 +200,8 @@ namespace Spine {
 			CheckRange(index, count);
 			Array.Copy(Items, index, array, arrayIndex, count);
 		}
+
+
 
 		public bool Exists (Predicate<T> match) {
 			CheckMatch(match);
@@ -439,6 +460,21 @@ namespace Spine {
 			version++;
 		}
 
+		// Spine Added Method
+		// Based on Stack<T>.Pop(); https://referencesource.microsoft.com/#mscorlib/system/collections/stack.cs
+		/// <summary>Pops the last item of the list. If the list is empty, Pop throws an InvalidOperationException.</summary>
+		public T Pop () {
+			if (Count == 0)
+				throw new InvalidOperationException("List is empty. Nothing to pop.");
+
+			int i = Count - 1;
+			T item = Items[i];
+			Items[i] = default(T);
+			Count--;
+			version++;
+			return item;
+		}
+
 		public void RemoveRange (int index, int count) {
 			CheckRange(index, count);
 			if (count > 0) {
@@ -525,7 +561,6 @@ namespace Spine {
 
 		#endregion
 
-		[Serializable]
 		public struct Enumerator : IEnumerator<T>, IDisposable {
 			private ExposedList<T> l;
 			private int next;
